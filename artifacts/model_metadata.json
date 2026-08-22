@@ -1,0 +1,19 @@
+{
+    "model_type": "Neural Network",
+    "target": "est_delivery",
+    "target_unit": "minutes",
+    "input_features": 75,
+    "architecture": [
+        64,
+        32,
+        1
+    ],
+    "loss": "mse",
+    "optimizer": "adam",
+    "metrics": [
+        "mae"
+    ],
+    "test_mae": 0.36926865016170324,
+    "test_rmse": 0.5038759644005694,
+    "test_r2": 0.9970992932069244
+}
