@@ -9,3 +9,5 @@ jupyterlab
 ipykernel
 statsmodels
 keras-tuner
+fastapi
+uvicorn
