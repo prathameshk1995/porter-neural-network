@@ -1,10 +1,18 @@
 from pathlib import Path
 import json
 import pickle
+import logging
 
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import load_model
+
+
+# ============================================================
+# Logging
+# ============================================================
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -21,22 +29,6 @@ METADATA_PATH = ARTIFACTS_DIR / "model_metadata.json"
 
 
 # ============================================================
-# Load artifacts ONCE when application starts
-# ============================================================
-
-model = load_model(MODEL_PATH)
-
-with open(SCALER_PATH, "rb") as file:
-    scaler = pickle.load(file)
-
-with open(FEATURE_COLUMNS_PATH, "rb") as file:
-    feature_columns = pickle.load(file)
-
-with open(METADATA_PATH, "r") as file:
-    model_metadata = json.load(file)
-
-
-# ============================================================
 # Configuration
 # ============================================================
 
@@ -45,11 +37,6 @@ CATEGORICAL_COLUMNS = [
     "store_primary_category",
     "order_protocol",
 ]
-
-
-# ============================================================
-# Input validation
-# ============================================================
 
 REQUIRED_COLUMNS = [
     "market_id",
@@ -69,27 +56,144 @@ REQUIRED_COLUMNS = [
 
 
 # ============================================================
+# Artifact loading
+# ============================================================
+
+def load_artifacts():
+
+    logger.info("Loading ML artifacts...")
+
+    # Check files exist
+    artifact_paths = [
+        MODEL_PATH,
+        SCALER_PATH,
+        FEATURE_COLUMNS_PATH,
+        METADATA_PATH,
+    ]
+
+    for path in artifact_paths:
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Required artifact not found: {path}"
+            )
+
+    # Load model
+    loaded_model = load_model(MODEL_PATH)
+
+    # Load scaler
+    with open(SCALER_PATH, "rb") as file:
+        loaded_scaler = pickle.load(file)
+
+    # Load feature columns
+    with open(FEATURE_COLUMNS_PATH, "rb") as file:
+        loaded_feature_columns = pickle.load(file)
+
+    # Load metadata
+    with open(METADATA_PATH, "r") as file:
+        loaded_metadata = json.load(file)
+
+    logger.info("ML artifacts loaded successfully.")
+
+    return (
+        loaded_model,
+        loaded_scaler,
+        loaded_feature_columns,
+        loaded_metadata,
+    )
+
+
+# ============================================================
+# Load artifacts
+# ============================================================
+
+model, scaler, feature_columns, model_metadata = load_artifacts()
+
+
+# ============================================================
+# Artifact validation
+# ============================================================
+
+def validate_artifacts():
+
+    logger.info("Validating ML artifacts...")
+
+    # --------------------------------------------------------
+    # Feature columns
+    # --------------------------------------------------------
+
+    if not isinstance(feature_columns, list):
+        raise ValueError(
+            "feature_columns.pkl must contain a list."
+        )
+
+    if len(feature_columns) != 75:
+        raise ValueError(
+            f"Expected 75 feature columns, "
+            f"found {len(feature_columns)}."
+        )
+
+    # --------------------------------------------------------
+    # Scaler
+    # --------------------------------------------------------
+
+    scaler_features = getattr(
+        scaler,
+        "n_features_in_",
+        None
+    )
+
+    if scaler_features != len(feature_columns):
+        raise ValueError(
+            "Scaler and feature columns mismatch: "
+            f"scaler={scaler_features}, "
+            f"features={len(feature_columns)}"
+        )
+
+    # --------------------------------------------------------
+    # Model
+    # --------------------------------------------------------
+
+    model_input_features = model.input_shape[-1]
+
+    if model_input_features != len(feature_columns):
+        raise ValueError(
+            "Model and feature columns mismatch: "
+            f"model={model_input_features}, "
+            f"features={len(feature_columns)}"
+        )
+
+    # --------------------------------------------------------
+    # Metadata
+    # --------------------------------------------------------
+
+    logger.info(
+        "Model features: %s",
+        len(feature_columns)
+    )
+
+    logger.info(
+        "Scaler features: %s",
+        scaler_features
+    )
+
+    logger.info(
+        "Model input features: %s",
+        model_input_features
+    )
+
+    logger.info("Artifact validation successful.")
+
+
+# Validate immediately when application starts
+validate_artifacts()
+
+
+# ============================================================
 # Preprocessing
 # ============================================================
 
 def preprocess_input(input_data: dict) -> np.ndarray:
-    """
-    Apply the exact preprocessing steps used during training.
-
-    Steps:
-        1. Convert input dictionary to DataFrame
-        2. Convert created_at to datetime
-        3. Extract hour_of_day
-        4. Extract day_of_week
-        5. Remove created_at
-        6. One-hot encode categorical columns
-        7. Align columns to the 75 model features
-        8. Apply StandardScaler
-    """
-
-    # --------------------------------------------------------
-    # Create DataFrame
-    # --------------------------------------------------------
 
     df = pd.DataFrame([input_data])
 
@@ -98,7 +202,8 @@ def preprocess_input(input_data: dict) -> np.ndarray:
     # --------------------------------------------------------
 
     missing_columns = [
-        column for column in REQUIRED_COLUMNS
+        column
+        for column in REQUIRED_COLUMNS
         if column not in df.columns
     ]
 
@@ -108,7 +213,7 @@ def preprocess_input(input_data: dict) -> np.ndarray:
         )
 
     # --------------------------------------------------------
-    # Convert created_at to datetime
+    # Datetime conversion
     # --------------------------------------------------------
 
     df["created_at"] = pd.to_datetime(
@@ -134,7 +239,7 @@ def preprocess_input(input_data: dict) -> np.ndarray:
     )
 
     # --------------------------------------------------------
-    # One-hot encode categorical features
+    # One-hot encoding
     # --------------------------------------------------------
 
     df = pd.get_dummies(
@@ -145,7 +250,7 @@ def preprocess_input(input_data: dict) -> np.ndarray:
     )
 
     # --------------------------------------------------------
-    # Align with EXACT training features
+    # Align with training features
     # --------------------------------------------------------
 
     df = df.reindex(
@@ -154,13 +259,13 @@ def preprocess_input(input_data: dict) -> np.ndarray:
     )
 
     # --------------------------------------------------------
-    # Ensure numeric values
+    # Numeric conversion
     # --------------------------------------------------------
 
     df = df.astype(float)
 
     # --------------------------------------------------------
-    # Scale using fitted StandardScaler
+    # Scaling
     # --------------------------------------------------------
 
     scaled_data = scaler.transform(df)
@@ -173,9 +278,6 @@ def preprocess_input(input_data: dict) -> np.ndarray:
 # ============================================================
 
 def predict(input_data: dict) -> float:
-    """
-    Generate delivery-time prediction for one record.
-    """
 
     processed_data = preprocess_input(input_data)
 
