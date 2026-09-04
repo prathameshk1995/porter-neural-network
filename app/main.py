@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 
 from app.predictor import predict
@@ -8,13 +10,30 @@ from app.schemas import (
 
 
 # ============================================================
+# Logging configuration
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(name)s | "
+        "%(message)s"
+    ),
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
 # FastAPI Application
 # ============================================================
 
 app = FastAPI(
     title="Porter Delivery ETA Prediction API",
     description=(
-        "Neural Network API for predicting"
+        "Neural Network API for predicting "
         "Porter delivery time in minutes."
     ),
     version="1.0.0",
@@ -27,6 +46,7 @@ app = FastAPI(
 
 @app.get("/")
 def root():
+
     return {
         "message": "Porter Delivery ETA Prediction API",
         "version": "1.0.0",
@@ -40,6 +60,7 @@ def root():
 
 @app.get("/health")
 def health_check():
+
     return {
         "status": "healthy"
     }
@@ -53,7 +74,6 @@ def health_check():
     "/predict",
     response_model=PredictionResponse
 )
-
 def predict_delivery_time(
     request: PredictionRequest
 ):
@@ -62,15 +82,40 @@ def predict_delivery_time(
 
         input_data = request.model_dump()
 
+        logger.info(
+            "Prediction request received."
+        )
+
         prediction = predict(input_data)
+
+        logger.info(
+            "Prediction generated successfully: %.4f minutes",
+            prediction
+        )
 
         return PredictionResponse(
             predicted_delivery_time_minutes=prediction
         )
 
+    except ValueError as error:
+
+        logger.error(
+            "Invalid prediction input: %s",
+            error
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+
     except Exception as error:
+
+        logger.exception(
+            "Unexpected prediction error."
+        )
 
         raise HTTPException(
             status_code=500,
-            detail=f"Prediction failed: {str(error)}"
+            detail="Internal prediction error."
         )
