@@ -1,0 +1,14 @@
+numpy==2.4.6
+pandas==3.0.5
+matplotlib
+scipy==1.17.1
+seaborn
+scikit-learn==1.6.1
+tensorflow==2.21.0
+jupyterlab
+ipykernel
+statsmodels
+keras-tuner
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
