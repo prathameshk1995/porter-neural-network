@@ -18,6 +18,7 @@ __pycache__/
 # Model files
 *.h5
 *.keras
+!artifacts/model.keras
 *.ckpt
 
 # Logs
